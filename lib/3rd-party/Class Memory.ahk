@@ -2,7 +2,8 @@
 {
 	__New(program)
 	{
-		this.pointer := this.getModuleBaseAddress(program)
+		;this.pointer := this.getModuleBaseAddress(program)
+		this.pointer := this.getProcessBaseAddress(program)
 		WinGet, pid, PID, % program
 		this.hProcess := DllCall("OpenProcess", "UInt", 24, "Int", False, "UInt", pid, "Ptr") 
 	}
@@ -45,9 +46,31 @@
 
 	_Read(address)
 	{
-	    DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", address, "UInt*", result, "Ptr", 4, "Ptr",0)
+	    DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", address, "Ptr*", result, "Ptr", 4, "Ptr",0) ;originally UINT*
 	    Return result
 	}
+
+	getProcessBaseAddress(WindowTitle, windowMatchMode := "3")    ;WindowTitle can be anything ahk_exe ahk_class etc
+	{
+	    if (windowMatchMode && A_TitleMatchMode != windowMatchMode)
+	    {
+	        mode := A_TitleMatchMode ; This is a string and will not contain the 0x prefix
+	        StringReplace, windowMatchMode, windowMatchMode, 0x ; remove hex prefix as SetTitleMatchMode will throw a run time error. This will occur if integer mode is set to hex and matchmode param is passed as an number not a string.
+	        SetTitleMatchMode, %windowMatchMode%    ;mode 3 is an exact match
+	    }
+	    WinGet, hWnd, ID, %WindowTitle%
+	    if mode
+	        SetTitleMatchMode, %mode%    ; In case executed in autoexec
+	    if !hWnd
+	        return ; return blank failed to find window
+	    return DllCall(A_PtrSize = 4     ; If DLL call fails, returned value will = 0
+	        ? "GetWindowLong"
+	        : "GetWindowLongPtr"
+	        , "Ptr", hWnd, "Int", -6, A_Is64bitOS ? "Int64" : "UInt")  
+	        ; For the returned value when the OS is 64 bit use Int64 to prevent negative overflow when AHK is 32 bit and target process is 64bit 
+	        ; however if the OS is 32 bit, must use UInt, otherwise the number will be huge (however it will still work as the lower 4 bytes are correct)      
+	        ; Note - it's the OS bitness which matters here, not the scripts/AHKs
+	}   
 
 	getModuleBaseAddress(program, module := "")
 	{
